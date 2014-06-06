@@ -1,0 +1,11 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+# Home page
+GET     /recipes                        controllers.Application.recipes
+GET     /recipes/:id                     controllers.Application.recipe(id:Long)
+POST    /recipes                        controllers.Application.safeRecipe
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /*file               controllers.Assets.at(path="/public", file)

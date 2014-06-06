@@ -1,0 +1,10 @@
+.col-no-padding-left {
+  padding-left: 0px !important;
+}
+.col-no-padding-right {
+  padding-right: 0px !important;
+}
+
+.match_selected {
+  background-color: blue;
+}

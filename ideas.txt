@@ -1,0 +1,52 @@
+
+UI routes:
+
+#/cookbooks
+
+list of all cookbooks on the system
+
+  Kochbuecher:
+
+    Meine Kochbucher:
+    - Margaritas Kochbuch (16 Rezepte)
+
+    Button: Neues Kochbuch erstellen
+    Button Kochbuch entfernen
+
+    Kochbuecher anderer Leute
+    Petra und Sams Kochbuch (33 Rezepte)
+    Giselas Kochbuch
+
+
+#/cookbooks/12/all
+
+  List of all recipes
+
+#cookbooks/12/53/
+
+  List of all recipes in chapter "Dessert" (id = 53)
+
+
+Sidebar:
+
+Margaritas Kochbuch:
+  Alle Rezepte (15)
+  Desserts (2)
+  Grillieren (3)
+  ...
+
+  Rezept Hinzufuegen
+  Rezepte Suchen
+  
+...
+Andere Kochbuecher
+
+
+Menubar
+
+  Schnellsuche
+
+  Login: Username/PW
+
+
+
