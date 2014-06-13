@@ -3,16 +3,19 @@
  */
 
 var React = require('react/addons');
+var Router = require('../Router.js')
+var Service = require('../Service.js')
+var SubjectStateBinder = require('../util/SubjectStateBinder.js')
 
 var CookbookListElement = React.createClass({
   /*jshint ignore:start */
   render: function () {
-    var cookbookLink = '#/cookbooks/'+this.props.cookbook.id
+    var cookbook = this.props.cookbook;
     return (
-      <div className="col-md-3 text-center">
+      <div className="col-md-3 text-center" onClick={Router.navigateToCookbook(cookbook.id)} >
         <h4>{this.props.cookbook.displayname}</h4>
         <div style={{fontSize:'80px'}}> <span className="glyphicon glyphicon-book"></span> </div>
-        <a href={cookbookLink} className="btn btn-default btn-sm">Anschauen</a>
+        <a href={Router.linkToCookbook(cookbook.id)} className="btn btn-default btn-sm">Anschauen</a>
       </div>
       )
   }
@@ -21,17 +24,9 @@ var CookbookListElement = React.createClass({
 
 
 var CookbookList = React.createClass({
-  getInitialState: function () {
-    return {cookbooks: []}
-  },
-  componentWillMount: function(){
-    var self = this;
-    this.props.cookbooks.subscribe(function (cookbookList) {
-      self.setState({cookbooks: cookbookList})
-    });
-  },
   /*jshint ignore:start */
   render: function () {
+    var cookbooks = this.props.cookbooks.map(function (c) { return <CookbookListElement cookbook={c} /> })
     return (
       <div> 
           <ol className="breadcrumb">
@@ -41,11 +36,8 @@ var CookbookList = React.createClass({
             <h1>Kochb&uuml;cher</h1>
           </div> 
           <div className="row">
-            {this.state.cookbooks.map(function (c) { return <CookbookListElement cookbook={c} /> })}
+            {cookbooks}
           </div>
-
-
-
       </div>
       )
   }

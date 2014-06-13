@@ -8,4 +8,5 @@ GET     /recipes/:id                     controllers.Application.recipe(id:Long)
 POST    /recipes                        controllers.Application.safeRecipe
 
 # Map static resources from the /public folder to the /assets URL path
+GET     /cookbooks/*path      controllers.Application.defaultStatic(path)
 GET     /*file               controllers.Assets.at(path="/public", file)

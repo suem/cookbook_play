@@ -41686,118 +41686,120 @@ var React = require('react/addons');
 var Backbone = require('backbone')
 var $ = require('jquery');
 Backbone.$ = $;
+
+var Service = require('./Service.js');
+var Router = require('./Router.js')
+
 var MenuBar = require('./components/MenuBar.js');
 var CookbookList = require('./components/CookbookList.js');
 var CookbookView = require('./components/CookbookView.js');
 var RecipeView = require('./components/RecipeView.js');
 var RecipeForm = require('./components/recipeForm/RecipeForm.js');
-var Service = require('./RecipeService.js');
-var DummyService = require('./DummyService.js');
 
 var menubarContainer = document.getElementById('menubar');
 var mainContainer = document.getElementById('content');
 
-React.renderComponent(MenuBar( {currentUser:DummyService.currentUser, onLogin:DummyService.login, onLogout:DummyService.logout}),menubarContainer);
-
-var Router = Backbone.Router.extend({
-  routes : {
-    "" : "cookbookList",
-    "cookbooks" : "cookbookList",
-    "cookbooks/:id" : "cookbookView"
-
-
-    // "recipes" : "recipeList",
-    // "recipes/:id" : "recipeDetail",
-    // "recipes/:id/edit" : "editRecipe",
-    // "new" : "newRecipe"
-  },
-  cookbookList: function () {
-    React.renderComponent(CookbookList( {cookbooks:DummyService.cookbooks}), document.getElementById('content'));
-  },
-  cookbookView: function (id) {
-    React.renderComponent(CookbookView( {cookbook:DummyService.getCookbook(id)}), document.getElementById('content'));
-  }
-
-
-  // recipeList : function() {
-  //   var recipes = Service.recipes()
-  //   var sub = recipes.subscribe(
-  //     function(recipes){
-  //       console.log(recipes);
-  //       React.renderComponent(<RecipeList recipes={recipes}/>, document.getElementById('content'));
-  //     }, 
-  //     function (err) {
-  //       handleError(err);
-  //     }
-  //   );
-  // },
-  // recipeDetail : function(id) {
-  //   var recipe = Service.recipe(id);
-  //   recipe.subscribe(
-  //     function(recipe){
-  //     React.renderComponent(<RecipeDetail recipe={recipe}/>, document.getElementById('content'));
-  //   },
-  //   function(err){
-  //     handleError(err);
-  //   });
-  // },
-  // editRecipe : function (id) {
-  //   var recipe = Service.recipe(id);
-  //   recipe.subscribe(
-  //     function(recipe){
-  //     var recipeCopy = JSON.parse(JSON.stringify(recipe))
-  //     var onSave = function (recipe) {
-  //       console.log('save recipe:');
-  //       console.log(recipe);
-  //       Service.safeRecipe(recipe)
-  //     }
-  //     React.renderComponent(<RecipeForm onSave={onSave} recipe={recipeCopy}/>, document.getElementById('content'));
-  //   },
-  //   function(err){
-  //     handleError(err);
-  //   });
-  // },
-  // newRecipe : function () {
-  //   var newRecipe = {id: null, ingredients: []};
-  //   var onSave = function (recipe) {
-  //     console.log('save recipe:');
-  //     console.log(recipe);
-  //     Service.safeRecipe(recipe)
-  //   }
-  //   React.renderComponent(<RecipeForm onSave={onSave} recipe={newRecipe}/>, document.getElementById('content'));
-  // }
-});
-
-new Router();
-Backbone.history.start();
-
-function handleError(err) {
-  //TODO create error component
-  console.log(err);
-  React.renderComponent(React.DOM.div(null, JSON.stringify(err.message)), document.getElementById('content'));
+var currentSubscription = null;
+var renderSubject = function (componentSubject) {
+  if(currentSubscription) currentSubscription.dispose();
+  currentSubscription = componentSubject.subscribe(function(component) {
+    React.renderComponent( component, mainContainer);
+  });
 }
 
+// render global menubar
+React.renderComponent(MenuBar( {currentUser:Service.currentUser, onLogin:Service.login, onLogout:Service.logout}), menubarContainer);
+
+var App = {
+  renderCookbookList :  function () {
+    console.log("cookbook list");
+    var componentSubject = Service.cookbooks.map(function(cookbooks){
+      return (CookbookList( {key:"cookbookList", cookbooks:cookbooks}));
+    });
+    renderSubject(componentSubject)
+  },
+  renderCookbookView : function (cookbookId) {
+    console.log("cookbook: "+cookbookId);
+    var cookbook = Service.getCookbook(cookbookId);
+    var currentUser = Service.currentUser;
+    var componentSubject = cookbook.combineLatest(currentUser, function(cookbook, currentUser) {
+      var isOwner = Service.ownsCookbook(cookbook,currentUser)
+      return (
+        CookbookView( {key:cookbookId, cookbook:cookbook, currentUser:Service.currentUser, isOwner:isOwner} )
+      );
+    });
+
+    renderSubject(componentSubject)
+  },
+  renderRecipeView : function (cookbookId, recipeId) {
+    console.log("recipe: "+cookbookId+", "+recipeId);
+
+    var cookbook = Service.getCookbook(cookbookId);
+    var currentUser = Service.currentUser;
+
+    var componentSubject = cookbook.combineLatest(currentUser, function(cookbook, currentUser) {
+      var recipe = cookbook.recipes[recipeId]
+      var isOwner = Service.ownsCookbook(cookbook,currentUser)
+      return (
+        RecipeView( {key:recipeId, cookbook:cookbook, recipe:recipe, isOwner:isOwner} )
+      );
+    });
+
+    renderSubject(componentSubject)
+  },
+  renderNewRecipeView : function (cookbookId) {
+    console.log("new recipe: "+cookbookId);
+    var onSave = function (recipe) {
+      Service.storeRecipe(cookbookId,recipe);
+    }
+    var componentSubject = Service.getCookbook(cookbookId).map(function (cookbook) {
+      return ( RecipeForm( {key:cookbookId+'_new', cookbook:cookbook, recipe:{ingredients: []}, onSave:onSave} )) 
+    })
+    renderSubject(componentSubject)
+  },
+  renderEditRecipeView : function (cookbookId, recipeId) {
+    console.log("recipe: "+cookbookId+", "+recipeId);
+
+    var cookbook = Service.getCookbook(cookbookId);
+    var currentUser = Service.currentUser;
+
+    var componentSubject = cookbook.map(function(cookbook) {
+      //make copy of objet s.t. original isn't edited
+      var recipe = JSON.parse(JSON.stringify(cookbook.recipes[recipeId]));
+      var onSave = function (recipe) {
+        Service.storeRecipe(cookbook.id,recipe);
+      }
+      return ( RecipeForm( {key:cookbookId+'_edit_'+recipeId, cookbook:cookbook, recipe:recipe, onSave:onSave} )) 
+    });
+    renderSubject(componentSubject)
+  }
+}
+
+Router.init(App)
+
+module.exports = App;
 
 
-},{"./DummyService.js":168,"./RecipeService.js":169,"./components/CookbookList.js":170,"./components/CookbookView.js":171,"./components/MenuBar.js":172,"./components/RecipeView.js":173,"./components/recipeForm/RecipeForm.js":174,"backbone":1,"jquery":4,"react/addons":5}],168:[function(require,module,exports){
+},{"./Router.js":170,"./Service.js":171,"./components/CookbookList.js":172,"./components/CookbookView.js":173,"./components/MenuBar.js":174,"./components/RecipeView.js":175,"./components/recipeForm/RecipeForm.js":176,"backbone":1,"jquery":4,"react/addons":5}],168:[function(require,module,exports){
 
 var _ = require('underscore');
 var Rx = require('rx');
+var Router = require('./Router.js')
 
 var users = {
   'sam' : {
-    id: 'sam', username: 'sam', displayname: "Samuel Ueltschi",
+    id: 'sam', username: 'sam', displayname: "Samuel Ueltschi", name: "Samuel Ueltschi",
     recipes: {
-      6: {id: 6, "name":"Riz Casimir","ingredients":[{"name":"Carolina Reis","amount":125,"unit":"g"},{"name":"Poulet-Geschnetzeltes","amount":300,"unit":"g"},{"name":"Hühnerbouillon","amount":2,"unit":"Würfel"},{"name":"Butter","amount":30,"unit":"g"},{"name":"Mehl","amount":20,"unit":"g"},{"name":"Currypulver Mild","amount":6,"unit":"g"},{"name":"Currypulver Madras","amount":4,"unit":"g"},{"name":"Milch","amount":3,"unit":"dl"},{"name":"Annanas","amount":1,"unit":"Dose"},{"name":"Pfirsich","amount":1,"unit":"Dose"}],"description":"Der moderne Schweizer Klassiker","instructions":"Reis mit doppelter menge Wasser und 1 Wurfel Bouillon Kochen.\nPoulet scharf anbraten, Mehl, Butter und Curry dazugeben, mit Milch abloeschen (wie Bechamel).\nBouillonwuerfel dazugene.\n\nOptional: Annanas und Pfirsich"},
-      7: {id: 7, "name": "Wähenguss", "ingredients": [ { "name": "Ei", "amount": 3, "unit": "Stk." }, { "name": "Zucker", "amount": 2, "unit": "EL" }, { "name": "Rahm", "amount": 2, "unit": "dl" }, { "name": "Vanillezucker", "amount": 1, "unit": "Sachet" } ], "description": "Guss für standard Wähe", "instructions": "Alles gut mischen. Ca. 35min bei 200C baken", "id": "w_henguss_gvfv42t9" }
+      6: {id: 6, cookbookOwner: 'sam', cookbookId: 'sam', cookbookName: "Samuel Ueltschi", "name":"Riz Casimir","ingredients":[{"name":"Carolina Reis","amount":125,"unit":"g"},{"name":"Poulet-Geschnetzeltes","amount":300,"unit":"g"},{"name":"Hühnerbouillon","amount":2,"unit":"Würfel"},{"name":"Butter","amount":30,"unit":"g"},{"name":"Mehl","amount":20,"unit":"g"},{"name":"Currypulver Mild","amount":6,"unit":"g"},{"name":"Currypulver Madras","amount":4,"unit":"g"},{"name":"Milch","amount":3,"unit":"dl"},{"name":"Annanas","amount":1,"unit":"Dose"},{"name":"Pfirsich","amount":1,"unit":"Dose"}],"description":"Der moderne Schweizer Klassiker","instructions":"Reis mit doppelter menge Wasser und 1 Wurfel Bouillon Kochen.\nPoulet scharf anbraten, Mehl, Butter und Curry dazugeben, mit Milch abloeschen (wie Bechamel).\nBouillonwuerfel dazugene.\n\nOptional: Annanas und Pfirsich"},
+      7: {id: 7, cookbookOwner: 'sam', cookbookId: 'sam', cookbookName: "Samuel Ueltschi", name: "Wähenguss", "ingredients": [ { "name": "Ei", "amount": 3, "unit": "Stk." }, { "name": "Zucker", "amount": 2, "unit": "EL" }, { "name": "Rahm", "amount": 2, "unit": "dl" }, { "name": "Vanillezucker", "amount": 1, "unit": "Sachet" } ], "description": "Guss für standard Wähe", "instructions": "Alles gut mischen. Ca. 35min bei 200C baken" }
     }
   },
 
   'petra': {
-    id: 'petra', username: 'petra', displayname: "Petra Wittwer",
+    id: 'petra', username: 'petra', displayname: "Petra Wittwer", name: "Petra Wittwer",
     recipes: {  
-      8: {id: 8, "name": "Verbrannte Rüebli", "ingredients": [ { "name": "Sämi", "amount": 1, "unit": "Awesome" }, { "name": "Rüebli", "amount": 4, "unit": "Stk." }, { "name": "Boullion", "amount": 1, "unit": "KL" }, { "name": "Pfanne", "amount": 1, "unit": "Stk." }, { "name": { "name": "Mehl", "unit": "g" }, "amount": 200, "unit": "EL" } ], "description": "Sam arbeitet an Kochbuch", "instructions": "Man kocht die Rüebli und hört nicht auf sie zu kochen.", "id": "verbrannte_r_ebli_ygt1q0k9" },
-      9: {id: 9, "name":"Muffins","ingredients":[{"name":"Mehl","amount":175,"unit":"g"},{"name":"Zucker","amount":90,"unit":"g"},{"name":"Butter","amount":100,"unit":"g"},{"name":"Saurer Halbrahm","amount":180,"unit":"g"},{"name":"Ei","amount":2,"unit":"Stk."},{"name":"Vanillezucker","amount":1,"unit":"Sachet"},{"name":"Salz","amount":1,"unit":"Prise"},{"name":"Backpulver","amount":1.5,"unit":"TL"}],"description":"Mein Muffingrundrezept","instructions":"Ofen auf 220C° vorheizen. Butter auf Raumtemperatur bringen. Alle trockenen Zutaten gut durchmischen. Alle feuchten Zutaten in zweiter Schüssel vermengen. Muffinblech mit Förmchen auslegen oder einölen. Formen zu 2/3 befüllen und im Ofen für ca 15min. backen. Stäbchenprobe.","id":"muffins_c09"}
+      8: {id: 8, cookbookOwner: 'petra', cookbookId: 'petra', cookbookName: "Petra Wittwer", name: "Verbrannte Rüebli", "ingredients": [ { "name": "Sämi", "amount": 1, "unit": "Awesome" }, { "name": "Rüebli", "amount": 4, "unit": "Stk." }, { "name": "Boullion", "amount": 1, "unit": "KL" }, { "name": "Pfanne", "amount": 1, "unit": "Stk." }, { "name": { "name": "Mehl", "unit": "g" }, "amount": 200, "unit": "EL" } ], "description": "Sam arbeitet an Kochbuch", "instructions": "Man kocht die Rüebli und hört nicht auf sie zu kochen." },
+      9: {id: 9, cookbookOwner: 'petra', cookbookId: 'petra', cookbookName: "Petra Wittwer", "name":"Muffins","ingredients":[{"name":"Mehl","amount":175,"unit":"g"},{"name":"Zucker","amount":90,"unit":"g"},{"name":"Butter","amount":100,"unit":"g"},{"name":"Saurer Halbrahm","amount":180,"unit":"g"},{"name":"Ei","amount":2,"unit":"Stk."},{"name":"Vanillezucker","amount":1,"unit":"Sachet"},{"name":"Salz","amount":1,"unit":"Prise"},{"name":"Backpulver","amount":1.5,"unit":"TL"}],"description":"Mein Muffingrundrezept","instructions":"Ofen auf 220C° vorheizen. Butter auf Raumtemperatur bringen. Alle trockenen Zutaten gut durchmischen. Alle feuchten Zutaten in zweiter Schüssel vermengen. Muffinblech mit Förmchen auslegen oder einölen. Formen zu 2/3 befüllen und im Ofen für ca 15min. backen. Stäbchenprobe."}
     }
   }
 };
@@ -41824,12 +41826,25 @@ var DummyService = {
   },
   getCookbook: function (id) {
     return new Rx.BehaviorSubject(users[id]);
+  },
+  getRecipe: function(cookbookId, recipeId) {
+    return new Rx.BehaviorSubject(users[cookbookId].recipes[recipeId]);
+  },
+  ownsCookbook: function(cookbook, currentUser) {
+    return currentUser != null && cookbook.id == currentUser.id;
+  },
+  storeRecipe: function (cookbookId, recipe, callback) {
+    if(!recipe.id) {
+      recipe.id = Math.random().toString(36).substring(7);
+    }
+    users[cookbookId].recipes[recipe.id] = recipe;
+    Router.navigateToRecipe(cookbookId, recipe.id)()
   }
 }
 
 module.exports = DummyService;
 
-},{"rx":162,"underscore":166}],169:[function(require,module,exports){
+},{"./Router.js":170,"rx":162,"underscore":166}],169:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -41876,21 +41891,104 @@ var Service = {
 module.exports = Service;
 
 },{"jquery":4,"rx":162,"underscore":166}],170:[function(require,module,exports){
+var Backbone = require('backbone')
+var $ = require('jquery');
+Backbone.$ = $;
+
+var Router = {
+  router: null,
+  init: function(app) {
+    var AppRouter = Backbone.Router.extend({
+      routes : {
+        '' : 'cookbookList',
+        'cookbooks' : 'cookbookList',
+        'cookbooks/:id' : 'cookbookView',
+        'cookbooks/:cookbookId/new' : 'newRecipeView',
+        'cookbooks/:cookbookId/:recipeId' : 'recipeView',
+        'cookbooks/:cookbookId/:recipeId/edit' : 'editRecipeView',
+      },
+      cookbookList: app.renderCookbookList,
+      cookbookView: app.renderCookbookView,
+      recipeView: app.renderRecipeView,
+      newRecipeView: app.renderNewRecipeView,
+      editRecipeView: app.renderEditRecipeView
+    });
+    this.router = new AppRouter();
+    Backbone.history.start();
+  },
+  navigate: function(location) {
+    this.router.navigate(location, {trigger: true});
+  },
+  navigateToCookbooks: function () {
+    this.navigate('cookbooks');
+    return false;
+  },
+  linkToCookbooks: function() {
+    return '#cookbooks';
+  },
+  navigateToCookbook: function (cookbookId) {
+    return function(){
+      this.navigate('cookbooks/'+cookbookId);
+      return false;
+    }.bind(this);
+  },
+  linkToCookbook: function (cookbookId) {
+    return '#cookbooks/'+cookbookId;
+  },
+  navigateToRecipe: function (cookbookId, recipeId) {
+    return function(){
+      this.navigate('cookbooks/'+cookbookId+'/'+recipeId);
+      return false;
+    }.bind(this);
+  },
+  linkToRecipe: function (cookbookId, recipeId) {
+    return '#cookbooks/'+cookbookId+'/'+recipeId;
+  },
+  navigateToNewRecipe: function (cookbookId) {
+    return function() {
+      this.navigate('cookbooks/'+cookbookId+'/new');
+      return false;
+    }.bind(this);
+  },
+  linkToNewRecipe: function (cookbookId) {
+    return '#cookbooks/'+cookbookId+'/new';
+  },
+  navigateToEditRecipe: function (cookbookId, recipeId) {
+    return function() {
+      this.navigate('cookbooks/'+cookbookId+'/'+recipeId+'/edit');
+      return false;
+    }.bind(this);
+  },
+  linkToEditRecipe: function (cookbookId, recipeId) {
+    return '#cookbooks/'+cookbookId+'/'+recipeId+'/edit';
+  }
+}
+
+module.exports = Router
+
+},{"backbone":1,"jquery":4}],171:[function(require,module,exports){
+var DummyService = require('./DummyService.js');
+module.exports = DummyService;
+
+},{"./DummyService.js":168}],172:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
 
 var React = require('react/addons');
+var Router = require('../Router.js')
+var Service = require('../Service.js')
+var SubjectStateBinder = require('../util/SubjectStateBinder.js')
 
 var CookbookListElement = React.createClass({displayName: 'CookbookListElement',
   /*jshint ignore:start */
   render: function () {
-    var cookbookLink = '#/cookbooks/'+this.props.cookbook.id
+    var cookbook = this.props.cookbook;
     return (
-      React.DOM.div( {className:"col-md-3 text-center"}, 
+      React.DOM.div( {className:"col-md-3 text-center", onClick:Router.navigateToCookbook(cookbook.id)} , 
         React.DOM.h4(null, this.props.cookbook.displayname),
         React.DOM.div( {style:{fontSize:'80px'}},  " ", React.DOM.span( {className:"glyphicon glyphicon-book"}), " " ),
-        React.DOM.a( {href:cookbookLink, className:"btn btn-default btn-sm"}, "Anschauen")
+        React.DOM.a( {href:Router.linkToCookbook(cookbook.id), className:"btn btn-default btn-sm"}, "Anschauen")
       )
       )
   }
@@ -41899,17 +41997,9 @@ var CookbookListElement = React.createClass({displayName: 'CookbookListElement',
 
 
 var CookbookList = React.createClass({displayName: 'CookbookList',
-  getInitialState: function () {
-    return {cookbooks: []}
-  },
-  componentWillMount: function(){
-    var self = this;
-    this.props.cookbooks.subscribe(function (cookbookList) {
-      self.setState({cookbooks: cookbookList})
-    });
-  },
   /*jshint ignore:start */
   render: function () {
+    var cookbooks = this.props.cookbooks.map(function (c) { return CookbookListElement( {cookbook:c} ) })
     return (
       React.DOM.div(null,  
           React.DOM.ol( {className:"breadcrumb"}, 
@@ -41919,11 +42009,8 @@ var CookbookList = React.createClass({displayName: 'CookbookList',
             React.DOM.h1(null, "Kochbücher")
           ), 
           React.DOM.div( {className:"row"}, 
-            this.state.cookbooks.map(function (c) { return CookbookListElement( {cookbook:c} ) })
+            cookbooks
           )
-
-
-
       )
       )
   }
@@ -41934,28 +42021,31 @@ var CookbookList = React.createClass({displayName: 'CookbookList',
 
 module.exports = CookbookList;
 
-},{"react/addons":5}],171:[function(require,module,exports){
+},{"../Router.js":170,"../Service.js":171,"../util/SubjectStateBinder.js":178,"react/addons":5}],173:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
 
 var React = require('react/addons');
+var Router = require('../Router.js')
 var _ = require('underscore')
 
 var RecipeListElement = React.createClass({displayName: 'RecipeListElement',
   /*jshint ignore:start */
   render: function () {
     var recipe = this.props.recipe;
-    var showDetailLink = '#recipes/'+recipe.id;
+    var cookbook = this.props.cookbook;
     return (
-        React.DOM.div( {className:"panel panel-default"}, 
+      React.DOM.div( {className:"panel panel-default", onClick:Router.navigateToRecipe(cookbook.id, recipe.id)}, 
             React.DOM.div( {className:"panel-heading"}, 
                 React.DOM.div( {className:"row"}, 
                     React.DOM.h3( {className:"panel-title col-xs-8"}, 
                         recipe.name
                     ),
                     React.DOM.div( {className:"col-xs-4 text-right"}, 
-                      React.DOM.a( {href:showDetailLink, className:"btn btn-default"}, "View")
+                      React.DOM.a(
+                        {onClick:Router.navigateToRecipe(cookbook.id,recipe.id),
+                        href:Router.linkToRecipe(cookbook.id,recipe.id), className:"btn btn-default"}, "View")
                     )
                 )
             ),
@@ -41969,30 +42059,49 @@ var RecipeListElement = React.createClass({displayName: 'RecipeListElement',
 });
 
 var CookbookView = React.createClass({displayName: 'CookbookView',
-  getInitialState: function () {
-    return {displayname: '', recipes: []}
-  },
-  componentWillMount: function(){
-    var self = this;
-    this.props.cookbook.subscribe(function (cookbook) {
-      self.setState({recipes: _.values(cookbook.recipes), displayname: cookbook.displayname})
-    });
-  },
   render: function () {
-    var elems = this.state.recipes.map(function (r) {
-        return RecipeListElement( {recipe:r} )
+    var cookbook = this.props.cookbook;
+    var elems = _.map(cookbook.recipes, function (r) {
+        return RecipeListElement( {key:r.id, cookbook:cookbook, recipe:r} )
     });
+    var isOwner = this.props.isOwner;
+
+    var addRecipeButton = isOwner ? (
+      React.DOM.div( {className:"text-right"}, 
+        React.DOM.a( {onClick:Router.navigateToNewRecipe(cookbook.id), href:Router.linkToNewRecipe(cookbook.id), className:"btn btn-primary"}, "Neues Rezept " )
+      )
+    ) : null;
+
     return (
 
       React.DOM.div(null, 
+
         React.DOM.ol( {className:"breadcrumb"}, 
-          React.DOM.li(null, React.DOM.a( {href:"#/cookbooks"}, "Kochbücher")),
-          React.DOM.li( {className:"active"}, this.state.displayname)
+          React.DOM.li(null, React.DOM.a( {href:Router.linkToCookbooks()}, "Kochbücher")),
+          React.DOM.li( {className:"active"}, cookbook.name)
         ),
+
         React.DOM.div( {className:"page-header"}, 
-          React.DOM.h1( {className:"page-header"}, this.state.displayname),
-          elems
-        ) 
+          React.DOM.h1( {className:"page-header"}, cookbook.name)
+        ), 
+
+
+          React.DOM.div( {className:"row"}, 
+
+            React.DOM.div( {className:"col-md-3"}, 
+              React.DOM.div( {className:"list-group"}, 
+                React.DOM.a( {href:"#", className:"list-group-item active"}, "Alle",React.DOM.span( {className:"badge"}, elems.length)),
+                React.DOM.a( {href:"#", className:"list-group-item " }, "Bla..",React.DOM.span( {className:"badge"}, "0"))
+              ),
+              addRecipeButton
+            ),
+
+            React.DOM.div( {className:"col-md-9"}, 
+              elems
+            )
+
+          )
+
       )
       )
   }
@@ -42000,7 +42109,7 @@ var CookbookView = React.createClass({displayName: 'CookbookView',
 
 module.exports = CookbookView;
 
-},{"react/addons":5,"underscore":166}],172:[function(require,module,exports){
+},{"../Router.js":170,"react/addons":5,"underscore":166}],174:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
@@ -42008,13 +42117,14 @@ module.exports = CookbookView;
 var _ = require('underscore');
 var React = require('react/addons');
 var Service = require('../RecipeService.js')
+var Router = require('../Router.js')
 
 var LoginForm = React.createClass({displayName: 'LoginForm',
   getInitialState: function () {
     return {error: null}
   },
   logout: function () {
-    this.props.onLogout();     
+    this.props.onLogout();  
     return false;
   },
   login: function () {
@@ -42086,8 +42196,7 @@ var MenuBar = React.createClass({displayName: 'MenuBar',
   render: function () {
     var myRecipesLink = null;
     if(this.state.currentUser != null) {
-      var myRecipesURL = "#/cookbooks/"+this.state.currentUser.id
-      myRecipesLink = (React.DOM.li(null, React.DOM.a( {href:myRecipesURL}, "Meine Rezepte")))
+      myRecipesLink = (React.DOM.li(null, React.DOM.a( {href:Router.linkToCookbook(this.state.currentUser.id)}, "Meine Rezepte")))
     }
     return (
       React.DOM.div( {className:"navbar navbar-inverse navbar-fixed-static", role:"navigation"}, 
@@ -42099,7 +42208,7 @@ var MenuBar = React.createClass({displayName: 'MenuBar',
               React.DOM.span( {className:"icon-bar"}),
               React.DOM.span( {className:"icon-bar"})
             ),
-            React.DOM.a( {className:"navbar-brand", href:"#"}, React.DOM.span( {className:"glyphicon glyphicon-th"}))
+            React.DOM.a( {className:"navbar-brand", href:Router.linkToCookbooks()}, React.DOM.span( {className:"glyphicon glyphicon-th"}))
           ),
           React.DOM.div( {className:"collapse navbar-collapse"}, 
             React.DOM.ul( {className:"nav navbar-nav"}, 
@@ -42121,33 +42230,49 @@ var MenuBar = React.createClass({displayName: 'MenuBar',
 
 module.exports = MenuBar;
 
-},{"../RecipeService.js":169,"react/addons":5,"underscore":166}],173:[function(require,module,exports){
+},{"../RecipeService.js":169,"../Router.js":170,"react/addons":5,"underscore":166}],175:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
 
 var _ = require('underscore');
 var React = require('react/addons');
+var Router = require('../Router.js')
 
-var CookbookView = React.createClass({displayName: 'CookbookView',
+var RecipeView = React.createClass({displayName: 'RecipeView',
   render: function () {
-    var r = this.props.recipe;
-
-    var ingredients = r.ingredients.map(function (i) {
-      return React.DOM.li(null, i.name,", ", i.amount, " ", i.unit)
+    var recipe = this.props.recipe;
+    var cookbook = this.props.cookbook;
+    var isOwner = this.props.isOwner;
+    var ingredients = recipe.ingredients.map(function (i,j) {
+      return React.DOM.li( {key:j}, i.name,", ", i.amount, " ", i.unit)
     });
 
-    var editLink = '#recipes/'+r.id+'/edit';
+    var editLinks = isOwner ? (
+      React.DOM.div( {className:"btn-toolbar"}, 
+        React.DOM.a( {onClick:Router.navigateToEditRecipe(cookbook.id,recipe.id), href:Router.linkToEditRecipe(cookbook.id,recipe.id), className:"btn btn-warning"}, 
+          "Bearbeiten"
+        ),
+        React.DOM.a( {href:"", className:"btn btn-danger"}, 
+          "Löschen"
+        )
+      )
+    ) : null;
 
     return (
-      React.DOM.div(null, 
-        React.DOM.div( {className:"container-fluid"}, 
+        React.DOM.div(null, 
+
+          React.DOM.ol( {className:"breadcrumb"}, 
+            React.DOM.li(null, React.DOM.a( {href:Router.linkToCookbooks()}, "Kochbücher")),
+            React.DOM.li(null, React.DOM.a( {href:Router.linkToCookbook(cookbook.id)}, cookbook.name)),
+            React.DOM.li( {className:"active"}, recipe.name)
+          ),
+
           React.DOM.h1( {className:"page-header"}, 
-            r.name,React.DOM.br(null),
-            React.DOM.small(null, r.description)
-          )
-        ),
-        React.DOM.div( {className:"container-fluid"}, 
+            recipe.name,React.DOM.br(null),
+            React.DOM.small(null, recipe.description)
+          ),
+
           React.DOM.div( {className:"row"}, 
             React.DOM.div( {className:"col-md-3"}, 
               React.DOM.div( {className:"panel panel-default"}, 
@@ -42161,7 +42286,7 @@ var CookbookView = React.createClass({displayName: 'CookbookView',
             ),
             React.DOM.div( {className:"col-md-9 text-justify"}, 
               React.DOM.h3(null, "Anleitung"),
-              r.instructions
+              recipe.instructions
             )
           ),
 
@@ -42172,28 +42297,18 @@ var CookbookView = React.createClass({displayName: 'CookbookView',
               )
             ),
             React.DOM.div( {className:"col-xs-10 text-right"}, 
-              React.DOM.div( {className:"btn-toolbar"}, 
-                React.DOM.a( {href:editLink, className:"btn btn-warning"}, 
-                  "Bearbeiten"
-                ),
-                React.DOM.a( {href:"", className:"btn btn-danger"}, 
-                  "Löschen"
-                )
-              )
+              editLinks
             )
           )
 
         )
-
-      )
-
     )
   }
 });
 
-module.exports = CookbookView;
+module.exports = RecipeView;
 
-},{"react/addons":5,"underscore":166}],174:[function(require,module,exports){
+},{"../Router.js":170,"react/addons":5,"underscore":166}],176:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
@@ -42201,8 +42316,7 @@ var _ = require('underscore');
 // var $ = require('jquery');
 var React = require('react/addons');
 var SuggestionInput = require('./SuggestionInput.js');
-
-var RecipeService = require('../../RecipeService.js')
+var Router = require('../../Router.js')
 
 var RecipeForm = React.createClass({displayName: 'RecipeForm',
   getInitialState: function () {
@@ -42278,10 +42392,20 @@ var RecipeForm = React.createClass({displayName: 'RecipeForm',
     this.props.onSave(recipe);
   },
   render: function () {
+    var cookbook = this.props.cookbook;
     var entryList = ['Mehl','Zucker','Salz','Milch'];
     return (
       React.DOM.div(null, 
-        React.DOM.h1( {className:"page-header"}, "Neues Rezept"),
+        React.DOM.ol( {className:"breadcrumb"}, 
+          React.DOM.li(null, React.DOM.a( {href:Router.linkToCookbooks()}, "Kochbücher")),
+          React.DOM.li(null, React.DOM.a( {href:Router.linkToCookbook(cookbook.id)}, cookbook.name)),
+          React.DOM.li( {className:"active"}, this.state.id ? this.state.name : 'Neues Rezept')
+        ),
+
+        React.DOM.div( {className:"page-header"}, 
+          React.DOM.h1( {className:"page-header"}, this.state.id ? 'Rezept Bearbeiten' : 'Neues Rezept')
+        ),
+
         React.DOM.form( {className:"form-horizontal", role:"form"}, 
           React.DOM.div( {className:"form-group"}, 
             React.DOM.label( {htmlFor:"title", className:"col-sm-2 control-label"}, "Name"),
@@ -42342,6 +42466,7 @@ var RecipeForm = React.createClass({displayName: 'RecipeForm',
             )
           )
         )
+
       )
     );
   }
@@ -42349,7 +42474,7 @@ var RecipeForm = React.createClass({displayName: 'RecipeForm',
 
 module.exports = RecipeForm;
 
-},{"../../RecipeService.js":169,"./SuggestionInput.js":175,"react/addons":5,"underscore":166}],175:[function(require,module,exports){
+},{"../../Router.js":170,"./SuggestionInput.js":177,"react/addons":5,"underscore":166}],177:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
@@ -42445,4 +42570,29 @@ var SuggestionInput = React.createClass({displayName: 'SuggestionInput',
 
 module.exports = SuggestionInput;
 
-},{"react/addons":5,"underscore":166}]},{},[167])
+},{"react/addons":5,"underscore":166}],178:[function(require,module,exports){
+var SubjectStateBinder = {
+  subscriptions: [],
+  bindSubject: function(observable,name) {
+    var subscription = observable.subscribe(function (val) {
+      var state = {};
+      state[name] = val;
+      this.setState(state)
+    }.bind(this));
+    this.subscriptions.push(subscription);
+  },
+  bindSubjects: function(bindings) {
+    Object.keys(bindings).forEach(function (name) {
+      this.bindSubject(bindings[name],name);
+    }.bind(this))
+  },
+  componentWillUnmount: function() {
+    this.subscriptions.forEach(function(s){
+      s.dispose();
+    });
+  }
+};
+
+module.exports = SubjectStateBinder;
+
+},{}]},{},[167])

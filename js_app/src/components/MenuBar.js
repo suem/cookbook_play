@@ -5,13 +5,14 @@
 var _ = require('underscore');
 var React = require('react/addons');
 var Service = require('../RecipeService.js')
+var Router = require('../Router.js')
 
 var LoginForm = React.createClass({
   getInitialState: function () {
     return {error: null}
   },
   logout: function () {
-    this.props.onLogout();     
+    this.props.onLogout();  
     return false;
   },
   login: function () {
@@ -83,8 +84,7 @@ var MenuBar = React.createClass({
   render: function () {
     var myRecipesLink = null;
     if(this.state.currentUser != null) {
-      var myRecipesURL = "#/cookbooks/"+this.state.currentUser.id
-      myRecipesLink = (<li><a href={myRecipesURL}>Meine Rezepte</a></li>)
+      myRecipesLink = (<li><a href={Router.linkToCookbook(this.state.currentUser.id)}>Meine Rezepte</a></li>)
     }
     return (
       <div className="navbar navbar-inverse navbar-fixed-static" role="navigation">
@@ -96,7 +96,7 @@ var MenuBar = React.createClass({
               <span className="icon-bar"></span>
               <span className="icon-bar"></span>
             </button>
-            <a className="navbar-brand" href="#"><span className="glyphicon glyphicon-th"></span></a>
+            <a className="navbar-brand" href={Router.linkToCookbooks()}><span className="glyphicon glyphicon-th"></span></a>
           </div>
           <div className="collapse navbar-collapse">
             <ul className="nav navbar-nav">

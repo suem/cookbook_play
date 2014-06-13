@@ -4,26 +4,42 @@
 
 var _ = require('underscore');
 var React = require('react/addons');
+var Router = require('../Router.js')
 
-var CookbookView = React.createClass({
+var RecipeView = React.createClass({
   render: function () {
-    var r = this.props.recipe;
-
-    var ingredients = r.ingredients.map(function (i) {
-      return <li>{i.name}, {i.amount} {i.unit}</li>
+    var recipe = this.props.recipe;
+    var cookbook = this.props.cookbook;
+    var isOwner = this.props.isOwner;
+    var ingredients = recipe.ingredients.map(function (i,j) {
+      return <li key={j}>{i.name}, {i.amount} {i.unit}</li>
     });
 
-    var editLink = '#recipes/'+r.id+'/edit';
+    var editLinks = isOwner ? (
+      <div className="btn-toolbar">
+        <a onClick={Router.navigateToEditRecipe(cookbook.id,recipe.id)} href={Router.linkToEditRecipe(cookbook.id,recipe.id)} className="btn btn-warning">
+          Bearbeiten
+        </a>
+        <a href="" className="btn btn-danger">
+          L&ouml;schen
+        </a>
+      </div>
+    ) : null;
 
     return (
-      <div>
-        <div className="container-fluid">
+        <div>
+
+          <ol className="breadcrumb">
+            <li><a href={Router.linkToCookbooks()}>Kochb&uuml;cher</a></li>
+            <li><a href={Router.linkToCookbook(cookbook.id)}>{cookbook.name}</a></li>
+            <li className="active">{recipe.name}</li>
+          </ol>
+
           <h1 className="page-header">
-            {r.name}<br/>
-            <small>{r.description}</small>
+            {recipe.name}<br/>
+            <small>{recipe.description}</small>
           </h1>
-        </div>
-        <div className="container-fluid">
+
           <div className="row">
             <div className="col-md-3">
               <div className="panel panel-default">
@@ -37,7 +53,7 @@ var CookbookView = React.createClass({
             </div>
             <div className="col-md-9 text-justify">
               <h3>Anleitung</h3>
-              {r.instructions}
+              {recipe.instructions}
             </div>
           </div>
 
@@ -48,23 +64,13 @@ var CookbookView = React.createClass({
               </a>
             </div>
             <div className="col-xs-10 text-right">
-              <div className="btn-toolbar">
-                <a href={editLink} className="btn btn-warning">
-                  Bearbeiten
-                </a>
-                <a href="" className="btn btn-danger">
-                  L&ouml;schen
-                </a>
-              </div>
+              {editLinks}
             </div>
           </div>
 
         </div>
-
-      </div>
-
     )
   }
 });
 
-module.exports = CookbookView;
+module.exports = RecipeView;

@@ -11,6 +11,11 @@ import model.RecipeService.JSONConverters._
 
 object Application extends Controller {
 
+  def defaultStatic(path:String) = {
+    println(path)
+    controllers.Assets.at("/public", "index.html")
+  }
+  
   def recipe(id: Long) = DBAction { implicit rs =>
     val r = RecipeService.findOne(id)
     r match {

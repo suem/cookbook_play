@@ -5,8 +5,7 @@ var _ = require('underscore');
 // var $ = require('jquery');
 var React = require('react/addons');
 var SuggestionInput = require('./SuggestionInput.js');
-
-var RecipeService = require('../../RecipeService.js')
+var Router = require('../../Router.js')
 
 var RecipeForm = React.createClass({
   getInitialState: function () {
@@ -82,10 +81,20 @@ var RecipeForm = React.createClass({
     this.props.onSave(recipe);
   },
   render: function () {
+    var cookbook = this.props.cookbook;
     var entryList = ['Mehl','Zucker','Salz','Milch'];
     return (
       <div>
-        <h1 className="page-header">Neues Rezept</h1>
+        <ol className="breadcrumb">
+          <li><a href={Router.linkToCookbooks()}>Kochb&uuml;cher</a></li>
+          <li><a href={Router.linkToCookbook(cookbook.id)}>{cookbook.name}</a></li>
+          <li className="active">{this.state.id ? this.state.name : 'Neues Rezept'}</li>
+        </ol>
+
+        <div className="page-header">
+          <h1 className="page-header">{this.state.id ? 'Rezept Bearbeiten' : 'Neues Rezept'}</h1>
+        </div>
+
         <form className="form-horizontal" role="form">
           <div className="form-group">
             <label htmlFor="title" className="col-sm-2 control-label">Name</label>
@@ -146,6 +155,7 @@ var RecipeForm = React.createClass({
             </div>
           </div>
         </form>
+
       </div>
     );
   }
