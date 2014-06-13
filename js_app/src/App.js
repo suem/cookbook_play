@@ -11,25 +11,43 @@ Backbone.$ = $;
 var Service = require('./Service.js');
 var Router = require('./Router.js')
 
+var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
+
 var MenuBar = require('./components/MenuBar.js');
 var CookbookList = require('./components/CookbookList.js');
 var CookbookView = require('./components/CookbookView.js');
 var RecipeView = require('./components/RecipeView.js');
 var RecipeForm = require('./components/recipeForm/RecipeForm.js');
 
+// render global menubar
 var menubarContainer = document.getElementById('menubar');
+React.renderComponent(<MenuBar currentUser={Service.currentUser} onLogin={Service.login} onLogout={Service.logout}/>, menubarContainer);
+
+
+var AppView = React.createClass({
+  getInitialState: function() {
+    return {component: <div />};
+  },
+  render: function () {
+    return this.state.component;
+  }
+});
+
 var mainContainer = document.getElementById('content');
 
 var currentSubscription = null;
 var renderSubject = function (componentSubject) {
   if(currentSubscription) currentSubscription.dispose();
   currentSubscription = componentSubject.subscribe(function(component) {
-    React.renderComponent( component, mainContainer);
+    React.unmountComponentAtNode(mainContainer)
+    React.renderComponent(component, mainContainer);
   });
 }
 
-// render global menubar
-React.renderComponent(<MenuBar currentUser={Service.currentUser} onLogin={Service.login} onLogout={Service.logout}/>, menubarContainer);
+
+
+
+
 
 var App = {
   renderCookbookList :  function () {
