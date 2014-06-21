@@ -37,7 +37,8 @@ var RecipeListElement = React.createClass({
 var CookbookView = React.createClass({
   render: function () {
     var cookbook = this.props.cookbook;
-    var elems = _.map(cookbook.recipes, function (r) {
+    var recipes = this.props.recipes;
+    var elems = recipes.map(function (r) {
         return <RecipeListElement key={r.id} cookbook={cookbook} recipe={r} />
     });
     var isOwner = this.props.isOwner;
@@ -65,7 +66,7 @@ var CookbookView = React.createClass({
           <div className="row">
 
             <div className="col-md-3">
-              <div className="list-group">
+              <div style={{display:'none'}} className="list-group">
                 <a href="#" className="list-group-item active">Alle<span className="badge">{elems.length}</span></a>
                 <a href="#" className="list-group-item ">Bla..<span className="badge">0</span></a>
               </div>

@@ -12,8 +12,8 @@ var CookbookListElement = React.createClass({
   render: function () {
     var cookbook = this.props.cookbook;
     return (
-      <div key={'cookbook_entry_'+cookbook.id} className="col-md-3 text-center" onClick={Router.navigateToCookbook(cookbook.id)} >
-        <h4>{this.props.cookbook.displayname}</h4>
+      <div  className="col-md-3 text-center" onClick={Router.navigateToCookbook(cookbook.id)} >
+        <h4>{this.props.cookbook.name}</h4>
         <div style={{fontSize:'80px'}}> <span className="glyphicon glyphicon-book"></span> </div>
         <a href={Router.linkToCookbook(cookbook.id)} className="btn btn-default btn-sm">Anschauen</a>
       </div>
@@ -26,7 +26,7 @@ var CookbookListElement = React.createClass({
 var CookbookList = React.createClass({
   /*jshint ignore:start */
   render: function () {
-    var cookbooks = this.props.cookbooks.map(function (c) { return <CookbookListElement cookbook={c} /> })
+    var cookbooks = this.props.cookbooks.map(function (c) { return <CookbookListElement cookbook={c} key={'cookbook_entry_'+c.id}/> })
     return (
       <div> 
           <ol className="breadcrumb">

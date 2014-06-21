@@ -1,3 +1,4 @@
+import model.DBModel
 import play.api._
 import play.api.db.slick._
 import play.api.db.slick.Session
@@ -21,24 +22,31 @@ object InitialData {
       recipeIngredientRows.delete
       recipeRows.delete
       ingredientRows.delete
+      userRows.delete
 
-      val recipeIds = (recipeRows returning recipeRows.map(_.id))++= Seq(
-        RecipeRow(Some(1), "Curry", "fein", "Man nehme"),
-        RecipeRow(Some(2), "Spaghetti", "fein", "Man nehme"),
-        RecipeRow(Some(3), "Spaetzli", "fein", "Man nehme")
-      )
+      val userIds = (userRows returning userRows.map(_.id)) ++= Seq(
+        UserRow(None, "sam", DBModel.toPassword("sam"), "Samuel Ueltschi"),
+        UserRow(None, "petra", DBModel.toPassword("petra"), "Petra Wittwer"))
+
+      val recipeIds = (recipeRows returning recipeRows.map(_.id)) ++= Seq(
+        RecipeRow(None, "Curry", "fein", "Man nehme", userIds(0)),
+        RecipeRow(None, "Spaghetti", "fein", "Man nehme", userIds(0)),
+        RecipeRow(None, "Spaetzli", "fein", "Man nehme", userIds(1)))
 
       val ingredientIds = (ingredientRows returning ingredientRows.map(_.id)) ++= Seq(
-        IngredientRow(Some(1),"Mehl"),
-        IngredientRow(Some(2),"Zucker"),
-        IngredientRow(Some(3),"Salz")
-      )
+        IngredientRow(None, "Currypaste"),
+        IngredientRow(None, "Spaghetti"),
+        IngredientRow(None, "Ei"))
 
       recipeIngredientRows ++= Seq(
-        RecipeIngredientRow(Some(1),"gr",2,recipeIds(0),ingredientIds(0)),
-        RecipeIngredientRow(Some(1),"gr",245,recipeIds(0),ingredientIds(1)),
-        RecipeIngredientRow(Some(1),"msp",1,recipeIds(0),ingredientIds(2))
-      )
+        RecipeIngredientRow(Some(1), "gr", 2, recipeIds(0), ingredientIds(0)),
+        RecipeIngredientRow(Some(1), "gr", 245, recipeIds(0), ingredientIds(1)),
+        RecipeIngredientRow(Some(1), "msp", 1, recipeIds(0), ingredientIds(2)),
+        RecipeIngredientRow(Some(1), "msp", 10, recipeIds(1), ingredientIds(1)),
+        RecipeIngredientRow(Some(1), "msp", 100, recipeIds(1), ingredientIds(1)),
+        RecipeIngredientRow(Some(1), "msp", 1000, recipeIds(1), ingredientIds(1)),
+        RecipeIngredientRow(Some(1), "msp", 10000, recipeIds(1), ingredientIds(1)),
+        RecipeIngredientRow(Some(1), "gr", 10, recipeIds(1), ingredientIds(0)))
     }
   }
 }

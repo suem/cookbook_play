@@ -17,8 +17,8 @@ var Router = {
       cookbookList: app.renderCookbookList,
       cookbookView: app.renderCookbookView,
       recipeView: app.renderRecipeView,
-      newRecipeView: app.renderNewRecipeView,
-      editRecipeView: app.renderEditRecipeView
+      newRecipeView: app.renderRecipeForm,
+      editRecipeView: app.renderRecipeForm
     });
     this.router = new AppRouter();
     Backbone.history.start();

@@ -2,11 +2,21 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
-# Home page
-GET     /recipes                        controllers.Application.recipes
-GET     /recipes/:id                     controllers.Application.recipe(id:Long)
-POST    /recipes                        controllers.Application.safeRecipe
+GET		/cookbooks							        controllers.Application.cookbooks
+GET 	/cookbooks/:cookbookId				        controllers.Application.cookbook(cookbookId:Long)
+GET 	/cookbooks/:cookbookId/recipes		        controllers.Application.recipes(cookbookId:Long)
+GET 	/cookbooks/:cookbookId/recipes/:recipeId    controllers.Application.recipe(cookbookId:Long, recipeId:Long)
+GET 	/cookbooks/:cookbookId/recipes/:recipeId/delete    controllers.Application.removeRecipe(cookbookId:Long, recipeId:Long)
+POST 	/cookbooks/:cookbookId/recipes              controllers.Application.storeRecipe(cookbookId:Long)
+
+GET		/ingredientsuggestions				        controllers.Application.ingredientSuggestions
+GET		/unitsuggestions				            controllers.Application.unitSuggestions
+GET		/currentuser						        controllers.Application.currentUser
+POST	/login								        controllers.Application.login
+GET		/logout								        controllers.Application.logout
+
+
 
 # Map static resources from the /public folder to the /assets URL path
-GET     /cookbooks/*path      controllers.Application.defaultStatic(path)
+GET     /                    controllers.Assets.at(path="/public", file="index.html")
 GET     /*file               controllers.Assets.at(path="/public", file)

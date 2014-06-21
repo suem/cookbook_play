@@ -1,2 +1,4 @@
 var DummyService = require('./DummyService.js');
-module.exports = DummyService;
+var RemoteService = require('./RemoteService.js');
+module.exports = RemoteService;
+// module.exports = DummyService;

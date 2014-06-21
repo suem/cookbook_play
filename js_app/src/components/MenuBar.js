@@ -4,7 +4,6 @@
 
 var _ = require('underscore');
 var React = require('react/addons');
-var Service = require('../RecipeService.js')
 var Router = require('../Router.js')
 
 var LoginForm = React.createClass({
@@ -53,7 +52,7 @@ var LoginForm = React.createClass({
   getLoggedIn: function() {
     return (
       <form onSubmit={this.logout}>
-        <p>{this.props.currentUser.displayname}</p>
+        <p>{this.props.currentUser.name}</p>
         <button className="btn btn-warning btn-block btn-sm">Abmelden</button>
       </form>
     ) 
@@ -102,7 +101,7 @@ var MenuBar = React.createClass({
             <ul className="nav navbar-nav">
               {myRecipesLink }
             </ul>
-            <form className="navbar-form navbar-left" role="search" >
+            <form style={{display:'none'}} className="navbar-form navbar-left" role="search" >
               <div className="form-group">
                 <input type="text" className="form-control" placeholder="Schnellsuche" />
               </div>

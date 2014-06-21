@@ -5,6 +5,7 @@ target/
 bin/
 
 .target
+.cache
 tmp
 .history
 dist

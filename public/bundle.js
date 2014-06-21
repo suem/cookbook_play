@@ -41684,11 +41684,15 @@ module.exports = Rx;
 'use strict';
 var React = require('react/addons');
 var Backbone = require('backbone')
+var Rx = require('rx')
 var $ = require('jquery');
 Backbone.$ = $;
 
 var Service = require('./Service.js');
+var RemoteService = require('./RemoteService.js');
 var Router = require('./Router.js')
+
+var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
 
 var MenuBar = require('./components/MenuBar.js');
 var CookbookList = require('./components/CookbookList.js');
@@ -41696,83 +41700,81 @@ var CookbookView = require('./components/CookbookView.js');
 var RecipeView = require('./components/RecipeView.js');
 var RecipeForm = require('./components/recipeForm/RecipeForm.js');
 
-var menubarContainer = document.getElementById('menubar');
-var mainContainer = document.getElementById('content');
+// render global menubar
+React.renderComponent(MenuBar( {currentUser:Service.getCurrentUser(), onLogin:Service.login, onLogout:Service.logout}), document.getElementById('menubar'));
 
-var currentSubscription = null;
-var renderSubject = function (componentSubject) {
-  if(currentSubscription) currentSubscription.dispose();
-  currentSubscription = componentSubject.subscribe(function(component) {
-    React.renderComponent( component, mainContainer);
-  });
+var toCookbookListComponent = function (cookbooks) {
+  return CookbookList( {key:"cookbookList", cookbooks:cookbooks});
 }
 
-// render global menubar
-React.renderComponent(MenuBar( {currentUser:Service.currentUser, onLogin:Service.login, onLogout:Service.logout}), menubarContainer);
+var toCookbookViewComponent = function (cookbook, recipes, currentUser) {
+  return (
+    CookbookView( {key:cookbook.id, cookbook:cookbook, recipes:recipes, isOwner:Service.ownsCookbook(cookbook,currentUser)}));
+}
+
+var toRecipeViewComponent = function (cookbook, recipe, currentUser) {
+  return (
+    RecipeView( {key:'recipe_'+recipe.id, cookbook:cookbook, recipe:recipe, 
+      isOwner:Service.ownsCookbook(cookbook,currentUser), onDelete:Service.removeRecipe} )
+  );
+}
+
+var toRecipeFormComponent = function(cookbook, recipe, ingredientSuggestions, unitSuggestions) {
+  return ( RecipeForm( 
+    {key:cookbook.id+'_edit_'+recipe.id, 
+    cookbook:cookbook, 
+    recipe:recipe, 
+    onSave:Service.storeRecipe, 
+    unitSuggestions:unitSuggestions,
+    ingredientSuggestions:ingredientSuggestions} )) 
+}
+
+var currentSubscription = new Rx.BehaviorSubject().subscribe(function(){}); 
+var mainContainer = document.getElementById('content');
+var renderSubject = function (componentSubject) {
+  currentSubscription.dispose();
+  currentSubscription = componentSubject.subscribe(function(component) {
+    React.unmountComponentAtNode(mainContainer)
+    React.renderComponent(component, mainContainer);
+  });
+}
 
 var App = {
   renderCookbookList :  function () {
     console.log("cookbook list");
-    var componentSubject = Service.cookbooks.map(function(cookbooks){
-      return (CookbookList( {key:"cookbookList", cookbooks:cookbooks}));
-    });
+    var componentSubject = Service.getCookbooks().map(toCookbookListComponent);
     renderSubject(componentSubject)
   },
   renderCookbookView : function (cookbookId) {
     console.log("cookbook: "+cookbookId);
     var cookbook = Service.getCookbook(cookbookId);
-    var currentUser = Service.currentUser;
-    var componentSubject = cookbook.combineLatest(currentUser, function(cookbook, currentUser) {
-      var isOwner = Service.ownsCookbook(cookbook,currentUser)
-      return (
-        CookbookView( {key:cookbookId, cookbook:cookbook, currentUser:Service.currentUser, isOwner:isOwner} )
-      );
-    });
-
+    var recipes = Service.getRecipes(cookbookId);
+    var currentUser = Service.getCurrentUser();
+    var componentSubject = cookbook.combineLatest(recipes, currentUser, toCookbookViewComponent);
     renderSubject(componentSubject)
   },
   renderRecipeView : function (cookbookId, recipeId) {
     console.log("recipe: "+cookbookId+", "+recipeId);
-
     var cookbook = Service.getCookbook(cookbookId);
-    var currentUser = Service.currentUser;
-
-    var componentSubject = cookbook.combineLatest(currentUser, function(cookbook, currentUser) {
-      var recipe = cookbook.recipes[recipeId]
-      var isOwner = Service.ownsCookbook(cookbook,currentUser)
-      return (
-        RecipeView( {key:recipeId, cookbook:cookbook, recipe:recipe, isOwner:isOwner} )
-      );
-    });
-
+    var currentUser = Service.getCurrentUser();
+    var recipe = Service.getRecipe(cookbookId,recipeId);
+    var componentSubject = cookbook.combineLatest(recipe, currentUser, toRecipeViewComponent);
     renderSubject(componentSubject)
   },
-  renderNewRecipeView : function (cookbookId) {
-    console.log("new recipe: "+cookbookId);
-    var onSave = function (recipe) {
-      Service.storeRecipe(cookbookId,recipe);
+  renderRecipeForm : function (cookbookId, recipeId) {
+    var cookbook = Service.getCookbook(cookbookId);
+    var ingredientSuggestions = Service.getIngredientSuggestions();
+    var unitSuggestions = Service.getUnitSuggestions();
+    var recipe
+    if(recipeId) {
+      recipe = Service.getRecipe(cookbookId, recipeId).map(function (r) { return JSON.parse(JSON.stringify(r)) })
+    } else {
+      recipe = new Rx.BehaviorSubject({id: null, name:'', description:'', instructions:'', ingredients: []});
     }
-    var componentSubject = Service.getCookbook(cookbookId).map(function (cookbook) {
-      return ( RecipeForm( {key:cookbookId+'_new', cookbook:cookbook, recipe:{ingredients: []}, onSave:onSave} )) 
-    })
-    renderSubject(componentSubject)
-  },
-  renderEditRecipeView : function (cookbookId, recipeId) {
-    console.log("recipe: "+cookbookId+", "+recipeId);
-
-    var cookbook = Service.getCookbook(cookbookId);
-    var currentUser = Service.currentUser;
-
-    var componentSubject = cookbook.map(function(cookbook) {
-      //make copy of objet s.t. original isn't edited
-      var recipe = JSON.parse(JSON.stringify(cookbook.recipes[recipeId]));
-      var onSave = function (recipe) {
-        Service.storeRecipe(cookbook.id,recipe);
-      }
-      return ( RecipeForm( {key:cookbookId+'_edit_'+recipeId, cookbook:cookbook, recipe:recipe, onSave:onSave} )) 
-    });
+    var componentSubject = cookbook.combineLatest(recipe, ingredientSuggestions,unitSuggestions,toRecipeFormComponent);
     renderSubject(componentSubject)
   }
+
 }
 
 Router.init(App)
@@ -41780,7 +41782,7 @@ Router.init(App)
 module.exports = App;
 
 
-},{"./Router.js":170,"./Service.js":171,"./components/CookbookList.js":172,"./components/CookbookView.js":173,"./components/MenuBar.js":174,"./components/RecipeView.js":175,"./components/recipeForm/RecipeForm.js":176,"backbone":1,"jquery":4,"react/addons":5}],168:[function(require,module,exports){
+},{"./RemoteService.js":169,"./Router.js":170,"./Service.js":171,"./components/CookbookList.js":172,"./components/CookbookView.js":173,"./components/MenuBar.js":174,"./components/RecipeView.js":175,"./components/recipeForm/RecipeForm.js":176,"backbone":1,"jquery":4,"react/addons":5,"rx":162}],168:[function(require,module,exports){
 
 var _ = require('underscore');
 var Rx = require('rx');
@@ -41809,8 +41811,12 @@ var currentUser = new Rx.BehaviorSubject();
 var cookbookList = new Rx.BehaviorSubject(_.values(users));
 
 var DummyService = {
-  currentUser: currentUser,
-  cookbooks: cookbookList,
+  getCurrentUser: function () {
+    return currentUser;
+  },
+  getCookbooks: function () {
+    return cookbookList;
+  },
   
   login: function (username,login,callback) {
     var user = users[username];
@@ -41846,51 +41852,113 @@ module.exports = DummyService;
 
 },{"./Router.js":170,"rx":162,"underscore":166}],169:[function(require,module,exports){
 'use strict';
-
 var _ = require('underscore');
 var Rx = require('rx');
-var $ = require('jquery');
+var Router = require('./Router.js')
+var $ = require('jquery')
+
+var currentUser = new Rx.BehaviorSubject();
+
+var GET = function (url) {
+  return $.getJSON(url)
+}
+
+var POST = function (url, json) {
+    return $.ajax({
+      type: 'POST',
+      url: url,
+      data: JSON.stringify(json),
+      contentType: "application/json",
+      dataType: 'json'});
+}
+
+var getJSON = function (url) {
+    var res = new Rx.AsyncSubject();
+    GET(url).done(function(json) {
+      res.onNext(json)  
+      res.onCompleted();
+    }).fail(function(jqxhr, textStatus, error) {
+      res.onError(error)
+    });
+    return res;
+}
+
+var postJSON = function(url, data) {
+    var res = new Rx.AsyncSubject();
+    POST(url,data).done(function (json) {
+      res.onNext(json)  
+      res.onCompleted();
+    }).fail(function(jqxhr, textStatus, error) {
+      res.onError(error)
+    });
+    return res;
+}
+
 
 var Service = {
-  recipes: function() {
-    var res = new Rx.AsyncSubject();
-    var url = '/recipes'
-    $.getJSON( url).done(function( json ) {
-      res.onNext(json)  
-      res.onCompleted();
-    }).fail(function( jqxhr, textStatus, error ) {
-      res.onError(error)
+
+  getCurrentUser: function () {
+    GET('/currentuser').done(function (user) {
+      currentUser.onNext(user)
+    }).fail(function(jqxhr, textStatus, error) {
+      //TODO broadcast error
+      console.log('failed to get user: '+error);
+      currentUser.onNext(null)
     });
-    return res;
+    return currentUser
   },
-  recipe: function(id) {
-    var res = new Rx.AsyncSubject();
-    var url = '/recipes/'+id
-    $.getJSON( url).done(function( json ) {
-      res.onNext(json)  
-      res.onCompleted();
-    }).fail(function( jqxhr, textStatus, error ) {
-      res.onError(error)
+
+  login: function (username,password,callback) {
+    POST('/login', {loginname:username,password:password}).done(function (user) {
+      currentUser.onNext(user)
+      callback(null)
+    }).fail(function(jqxhr, textStatus, error) {
+      //TODO broadcast error
+      console.log('failed to login: '+error);
+      currentUser.onNext(null)      
+      callback(error);
     });
-    return res;
+  }, 
+
+  logout: function() {
+    GET('/logout').done(function () {
+      currentUser.onNext(null)
+    }).fail(function(jqxhr, textStatus, error) {
+      currentUser.onError(null);
+      console.log('Failed to logout'+error);
+    });
   },
-  safeRecipe: function(recipe) {
-    $.ajax({
-      type: 'POST',
-      url: '/recipes',
-      data: JSON.stringify(recipe),
-      contentType: "application/json",
-      dataType: 'json'}).done(function( json ) {
-      console.log(json);
-    }).fail(function( jqxhr, textStatus, error ) {
-      console.log(error);
+  getCookbooks: function () { return getJSON('/cookbooks') },
+  getCookbook: function (id) { return getJSON('/cookbooks/'+id) },
+  getRecipes: function(cookbookId) { return getJSON('/cookbooks/'+cookbookId+'/recipes') },
+  getRecipe: function(cookbookId, recipeId) { 
+    return getJSON('/cookbooks/'+cookbookId+'/recipes/'+recipeId) 
+  },
+  getIngredientSuggestions: function () { return getJSON('/ingredientsuggestions') },
+  getUnitSuggestions: function () { return getJSON('/unitsuggestions') },
+  ownsCookbook: function(cookbook, currentUser) {
+    return currentUser != null && cookbook.id == currentUser.id;
+  },
+  storeRecipe: function (cookbookId, recipe) {
+    POST('/cookbooks/'+cookbookId+'/recipes', recipe).done(function (status) {
+      Router.navigateToRecipe(cookbookId, status.recipeId)()
+    }).fail(function(jqxhr, textStatus, error) {
+      console.log('failed to store recipe: '+error);
+    });
+  },
+  removeRecipe: function (cookbookId, recipeId) {
+    GET('/cookbooks/'+cookbookId+'/recipes/'+recipeId+'/delete', recipeId).done(function (status) {
+      Router.navigateToCookbook(cookbookId)();
+    }).fail(function(jqxhr, textStatus, error) {
+      console.log('failed to remove recipe: '+error);
+      Router.navigateToCookbook(cookbookId)();
     });
   }
 }
 
 module.exports = Service;
 
-},{"jquery":4,"rx":162,"underscore":166}],170:[function(require,module,exports){
+},{"./Router.js":170,"jquery":4,"rx":162,"underscore":166}],170:[function(require,module,exports){
 var Backbone = require('backbone')
 var $ = require('jquery');
 Backbone.$ = $;
@@ -41910,8 +41978,8 @@ var Router = {
       cookbookList: app.renderCookbookList,
       cookbookView: app.renderCookbookView,
       recipeView: app.renderRecipeView,
-      newRecipeView: app.renderNewRecipeView,
-      editRecipeView: app.renderEditRecipeView
+      newRecipeView: app.renderRecipeForm,
+      editRecipeView: app.renderRecipeForm
     });
     this.router = new AppRouter();
     Backbone.history.start();
@@ -41968,9 +42036,11 @@ module.exports = Router
 
 },{"backbone":1,"jquery":4}],171:[function(require,module,exports){
 var DummyService = require('./DummyService.js');
-module.exports = DummyService;
+var RemoteService = require('./RemoteService.js');
+module.exports = RemoteService;
+// module.exports = DummyService;
 
-},{"./DummyService.js":168}],172:[function(require,module,exports){
+},{"./DummyService.js":168,"./RemoteService.js":169}],172:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
@@ -41985,8 +42055,8 @@ var CookbookListElement = React.createClass({displayName: 'CookbookListElement',
   render: function () {
     var cookbook = this.props.cookbook;
     return (
-      React.DOM.div( {className:"col-md-3 text-center", onClick:Router.navigateToCookbook(cookbook.id)} , 
-        React.DOM.h4(null, this.props.cookbook.displayname),
+      React.DOM.div(  {className:"col-md-3 text-center", onClick:Router.navigateToCookbook(cookbook.id)} , 
+        React.DOM.h4(null, this.props.cookbook.name),
         React.DOM.div( {style:{fontSize:'80px'}},  " ", React.DOM.span( {className:"glyphicon glyphicon-book"}), " " ),
         React.DOM.a( {href:Router.linkToCookbook(cookbook.id), className:"btn btn-default btn-sm"}, "Anschauen")
       )
@@ -41999,7 +42069,7 @@ var CookbookListElement = React.createClass({displayName: 'CookbookListElement',
 var CookbookList = React.createClass({displayName: 'CookbookList',
   /*jshint ignore:start */
   render: function () {
-    var cookbooks = this.props.cookbooks.map(function (c) { return CookbookListElement( {cookbook:c} ) })
+    var cookbooks = this.props.cookbooks.map(function (c) { return CookbookListElement( {cookbook:c, key:'cookbook_entry_'+c.id}) })
     return (
       React.DOM.div(null,  
           React.DOM.ol( {className:"breadcrumb"}, 
@@ -42061,7 +42131,8 @@ var RecipeListElement = React.createClass({displayName: 'RecipeListElement',
 var CookbookView = React.createClass({displayName: 'CookbookView',
   render: function () {
     var cookbook = this.props.cookbook;
-    var elems = _.map(cookbook.recipes, function (r) {
+    var recipes = this.props.recipes;
+    var elems = recipes.map(function (r) {
         return RecipeListElement( {key:r.id, cookbook:cookbook, recipe:r} )
     });
     var isOwner = this.props.isOwner;
@@ -42089,7 +42160,7 @@ var CookbookView = React.createClass({displayName: 'CookbookView',
           React.DOM.div( {className:"row"}, 
 
             React.DOM.div( {className:"col-md-3"}, 
-              React.DOM.div( {className:"list-group"}, 
+              React.DOM.div( {style:{display:'none'}, className:"list-group"}, 
                 React.DOM.a( {href:"#", className:"list-group-item active"}, "Alle",React.DOM.span( {className:"badge"}, elems.length)),
                 React.DOM.a( {href:"#", className:"list-group-item " }, "Bla..",React.DOM.span( {className:"badge"}, "0"))
               ),
@@ -42116,7 +42187,6 @@ module.exports = CookbookView;
 
 var _ = require('underscore');
 var React = require('react/addons');
-var Service = require('../RecipeService.js')
 var Router = require('../Router.js')
 
 var LoginForm = React.createClass({displayName: 'LoginForm',
@@ -42165,7 +42235,7 @@ var LoginForm = React.createClass({displayName: 'LoginForm',
   getLoggedIn: function() {
     return (
       React.DOM.form( {onSubmit:this.logout}, 
-        React.DOM.p(null, this.props.currentUser.displayname),
+        React.DOM.p(null, this.props.currentUser.name),
         React.DOM.button( {className:"btn btn-warning btn-block btn-sm"}, "Abmelden")
       )
     ) 
@@ -42214,7 +42284,7 @@ var MenuBar = React.createClass({displayName: 'MenuBar',
             React.DOM.ul( {className:"nav navbar-nav"}, 
               myRecipesLink 
             ),
-            React.DOM.form( {className:"navbar-form navbar-left", role:"search"} , 
+            React.DOM.form( {style:{display:'none'}, className:"navbar-form navbar-left", role:"search"} , 
               React.DOM.div( {className:"form-group"}, 
                 React.DOM.input( {type:"text", className:"form-control", placeholder:"Schnellsuche"} )
               )
@@ -42230,7 +42300,7 @@ var MenuBar = React.createClass({displayName: 'MenuBar',
 
 module.exports = MenuBar;
 
-},{"../RecipeService.js":169,"../Router.js":170,"react/addons":5,"underscore":166}],175:[function(require,module,exports){
+},{"../Router.js":170,"react/addons":5,"underscore":166}],175:[function(require,module,exports){
 /**
  * @jsx React.DOM
  */
@@ -42240,20 +42310,26 @@ var React = require('react/addons');
 var Router = require('../Router.js')
 
 var RecipeView = React.createClass({displayName: 'RecipeView',
+  onDelete: function () {
+    if(confirm("Rezept wirklich loeschen?")) this.props.onDelete(this.props.cookbook.id, this.props.recipe.id); 
+    return false;
+  },
   render: function () {
     var recipe = this.props.recipe;
     var cookbook = this.props.cookbook;
     var isOwner = this.props.isOwner;
+
     var ingredients = recipe.ingredients.map(function (i,j) {
       return React.DOM.li( {key:j}, i.name,", ", i.amount, " ", i.unit)
     });
 
     var editLinks = isOwner ? (
       React.DOM.div( {className:"btn-toolbar"}, 
-        React.DOM.a( {onClick:Router.navigateToEditRecipe(cookbook.id,recipe.id), href:Router.linkToEditRecipe(cookbook.id,recipe.id), className:"btn btn-warning"}, 
+        React.DOM.a( {onClick:Router.navigateToEditRecipe(cookbook.id,recipe.id), 
+          href:Router.linkToEditRecipe(cookbook.id,recipe.id), className:"btn btn-warning"}, 
           "Bearbeiten"
         ),
-        React.DOM.a( {href:"", className:"btn btn-danger"}, 
+        React.DOM.a( {href:Router.linkToCookbook(cookbook.id), onClick:this.onDelete, className:"btn btn-danger"}, 
           "Löschen"
         )
       )
@@ -42321,6 +42397,7 @@ var Router = require('../../Router.js')
 var RecipeForm = React.createClass({displayName: 'RecipeForm',
   getInitialState: function () {
     var recipe = this.props.recipe;  
+    recipe.validationsActive = false;
     return recipe;
   },
   componentWillMount: function() {
@@ -42369,31 +42446,87 @@ var RecipeForm = React.createClass({displayName: 'RecipeForm',
   addIngredient: function () {
       this.state.ingredients.push({});
       this.setState({ingredients: this.state.ingredients},this.onStateUpdate);
+      return false;
   },
   removeIngredient: function (index) {
       delete this.state.ingredients[index];
       this.setState({ingredients: this.state.ingredients},this.onStateUpdate);
+      return false;
+  },
+  isRecipeValid: function () {
+    var self = this;
+    var messages = ['name', 'description', 'instructions'].map(function (name) { return self.getErrorMessage(name) == null; });
+    this.state.ingredients.forEach(function (ing,index) {
+      var ingMessages = ['name','unit','amount'].map(function (name) {
+        return self.getErrorMessage('ingredients',index,name) == null;
+      });
+      ingMessages.forEach(function (m) { messages.push(m) });
+    });
+    return messages.reduce(function (a,b) { return a && b; }, true); 
+  },
+  isValid: function (name,index,prop) {
+    return this.getErrorMessage(name,index,prop) == null;
+  },
+  getErrorMessage: function (name,index,prop) {
+    if(!this.state.validationsActive) return null;
+    
+    var notNull = function (val) {
+      var message = null;
+      if(val == undefined || val == null || val == "") message = "Wert darf nicht leer sein"; 
+      return message
+    }
+
+    var isNumeric = function (val) {
+      var message = null;
+      if(isNaN(val)) message = "Wert muss Zahl sein"
+      return message;
+    }
+
+    if(index === undefined) {
+      var validations = { name: notNull, description: notNull, instructions: notNull }
+      return validations[name](this.state[name]);
+    } else {
+      var validations = { name: notNull, unit: notNull, amount: isNumeric}
+      if(index < this.state.ingredients.length - 1) return validations[prop](this.state.ingredients[index][prop]);
+      else return null;
+    }
+      
   },
   saveRecipe: function () {
-    //TODO add validation
-    var ingredients = this.state.ingredients.filter(function(i){
-      return i.name != null && i.name != ""
-    }).map(function(i){
-      i.amount = Number(i.amount)
-      return i
-    })
-    var recipe = {
+    this.state.validationsActive = true;
+    this.setState({validationsActive:true});
+    if(this.isRecipeValid()){
+      var ingredients = this.state.ingredients.filter(function(i){
+        return i.name != null && i.name != ""
+      }).map(function(i){
+        i.amount = Number(i.amount)
+        return i
+      })
+      var recipe = {
         id: this.state.id,
         name: this.state.name, 
         description: this.state.description, 
         ingredients: ingredients,
         instructions: this.state.instructions
-    };
-    this.props.onSave(recipe);
+      };
+      this.props.onSave(this.props.cookbook.id, recipe);
+    }
+    return false;
   },
   render: function () {
     var cookbook = this.props.cookbook;
-    var entryList = ['Mehl','Zucker','Salz','Milch'];
+    var ingredientSuggestions = this.props.ingredientSuggestions
+    var unitList = this.props.unitSuggestions
+
+    var ingredientList = ingredientSuggestions.map(function (s) {return s.name});
+    var unitMap = {}
+    ingredientSuggestions.forEach(function (s) { unitMap[s.name] = s.unit });
+
+    var hasError = function (name,index,prop) {
+      return this.isValid(name,index,prop) ? '' : 'has-error';
+    }.bind(this)
+
+
     return (
       React.DOM.div(null, 
         React.DOM.ol( {className:"breadcrumb"}, 
@@ -42406,58 +42539,78 @@ var RecipeForm = React.createClass({displayName: 'RecipeForm',
           React.DOM.h1( {className:"page-header"}, this.state.id ? 'Rezept Bearbeiten' : 'Neues Rezept')
         ),
 
-        React.DOM.form( {className:"form-horizontal", role:"form"}, 
-          React.DOM.div( {className:"form-group"}, 
-            React.DOM.label( {htmlFor:"title", className:"col-sm-2 control-label"}, "Name"),
-            React.DOM.div( {className:"col-sm-10"}, 
-              React.DOM.input( {valueLink:this.indexedLinkState('name'), type:"text", autofocus:"true", className:"form-control", id:"name", placeholder:"Name des Rezept"} )
+        React.DOM.form( {className:"form-horizontal"}, 
+
+          React.DOM.div( {className:'form-group ' + hasError('name')}, 
+            React.DOM.label( {htmlFor:"title", className:"col-md-2 control-label"}, "Name"),
+            React.DOM.div( {className:"col-md-10"}, 
+              React.DOM.input( {valueLink:this.indexedLinkState('name'), type:"text", autofocus:"true", className:"form-control", id:"name", placeholder:"Name des Rezept"} ),
+              React.DOM.small( {className:"help-block"}, this.getErrorMessage('name'))
             )
           ),
-          React.DOM.div( {className:"form-group"}, 
-            React.DOM.label( {htmlFor:"description", className:"col-sm-2 control-label"}, "Beschreibung"),
-            React.DOM.div( {className:"col-sm-10"}, 
-              React.DOM.input( {valueLink:this.indexedLinkState('description'), type:"text", className:"form-control", id:"description", placeholder:"kurze Beschreibung"})
+          
+          React.DOM.div( {className:'form-group ' + hasError('description')}, 
+            React.DOM.label( {htmlFor:"description", className:"col-md-2 control-label"}, "Beschreibung"),
+            React.DOM.div( {className:"col-md-10"}, 
+              React.DOM.input( {valueLink:this.indexedLinkState('description'), type:"text", className:"form-control", id:"description", placeholder:"kurze Beschreibung"}),
+              React.DOM.small( {className:"help-block"}, this.getErrorMessage('description'))
             )
           ),
+
+
           React.DOM.div( {className:"form-group"}, 
-            React.DOM.label( {htmlFor:"instructions", className:"col-sm-2 control-label"}, "Zutaten"),
-            React.DOM.div( {className:"col-sm-10"}, 
+            React.DOM.label( {htmlFor:"ingredients", className:"col-md-2 control-label"}, "Zutaten"),
+            React.DOM.div( {className:"col-md-10"}, 
               this.state.ingredients.map(function(ing,index,arr) {
+                var isLast = index==arr.length-1;
                 var onSelect = function (e) {
-                  this.state.ingredients[index].unit = "GUGUS"
+                  console.log('selected '+e);
+                  this.state.ingredients[index].unit = unitMap[e]
                   this.setState({ingredients: this.state.ingredients})
                 }.bind(this);
                 return (
                   React.DOM.div( {className:"row form-group", key:'ing_'+index}, 
-                    React.DOM.div( {className:"col-xs-7"}, 
-                      SuggestionInput( {onSelect:onSelect, entries:entryList, valueLink:this.indexedLinkState('ingredients',index,'name'), type:"text", className:"form-control", placeholder:"Zutat (z.B. Milch)"})
+                    React.DOM.div( {className:'col-md-7 ' + hasError('ingredients', index, 'name')}, 
+                      SuggestionInput( 
+                        {onSelect:onSelect, 
+                        entries:ingredientList, 
+                        valueLink:this.indexedLinkState('ingredients',index,'name'), 
+                        type:"text", className:"form-control", placeholder:"Zutat (z.B. Milch)"}),
+                      React.DOM.small( {className:"help-block"}, this.getErrorMessage('ingredients',index,'name'))
                     ),
-                    React.DOM.div( {className:"col-xs-2"}, 
-                      React.DOM.input( {valueLink:this.indexedLinkState('ingredients',index,'amount'), type:"text", className:"form-control", placeholder:"Menge (z.B. 2)"})
+                    React.DOM.div( {className:'col-md-2 ' + hasError('ingredients', index, 'amount')}, 
+                      React.DOM.input( {valueLink:this.indexedLinkState('ingredients',index,'amount'), type:"text", className:"form-control", placeholder:"Menge (z.B. 2)"}),
+                      React.DOM.small( {className:"help-block"}, this.getErrorMessage('ingredients',index,'amount'))
                     ),
-                    React.DOM.div( {className:"col-xs-2"}, 
-                      React.DOM.input( {valueLink:this.indexedLinkState('ingredients',index,'unit'), type:"text", className:"form-control", placeholder:"Einheit (z.B. dl)"})
+                    React.DOM.div( {className:'col-md-2 ' + hasError('ingredients', index, 'unit')}, 
+                      SuggestionInput( 
+                        {entries:unitList, 
+                        valueLink:this.indexedLinkState('ingredients',index,'unit'), 
+                        type:"text", className:"form-control", placeholder:"Einheit (z.B. gr)"}),
+                      React.DOM.small( {className:"help-block"}, this.getErrorMessage('ingredients',index,'unit'))
                     ),
-                    React.DOM.div( {className:"col-xs-1"}, 
-                      React.DOM.button( {style:{display:(index==arr.length-1 ? 'none' : 'block')}, type:"button", className:"btn btn-default", onClick:this.removeIngredient.bind(this,index)}, 
+                    React.DOM.div( {className:"col-md-1"}, 
+                      React.DOM.button( {style:{display:(isLast ? 'none' : 'block')}, type:"button", className:"btn btn-default", onClick:this.removeIngredient.bind(this,index)}, 
                         React.DOM.span( {className:"glyphicon glyphicon-remove"})
                       )
                     )
                   )
                   );
-              }.bind(this)),
-              React.DOM.div( {className:"row"}, 
-                React.DOM.div( {className:"col-xs-12"}, 
-                  React.DOM.button( {className:"btn btn-default", onClick:this.addIngredient}, "neue Zutat")
-                )
-              )
+              }.bind(this))
             )
           ),
 
           React.DOM.div( {className:"form-group"}, 
+            React.DOM.div( {className:"col-md-offset-2 col-md-10"}, 
+              React.DOM.button( {className:"btn btn-default", onClick:this.addIngredient}, "neue Zutat")
+            )
+          ),
+
+          React.DOM.div( {className:'form-group ' + hasError('instructions')}, 
             React.DOM.label( {htmlFor:"instructions", className:"col-sm-2 control-label"}, "Anleitung"),
             React.DOM.div( {className:"col-sm-10"}, 
-              React.DOM.textarea( {valueLink:this.indexedLinkState('instructions'), type:"password", className:"form-control", id:"instructions", placeholder:"Man nehme..", rows:"10"} )
+              React.DOM.textarea( {valueLink:this.indexedLinkState('instructions'), type:"password", className:"form-control", id:"instructions", placeholder:"Man nehme..", rows:"10"} ),
+              React.DOM.small( {className:"help-block"}, this.getErrorMessage('instructions'))
             )
           ),
           React.DOM.div( {className:"form-group"}, 

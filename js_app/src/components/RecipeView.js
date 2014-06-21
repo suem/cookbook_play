@@ -7,20 +7,26 @@ var React = require('react/addons');
 var Router = require('../Router.js')
 
 var RecipeView = React.createClass({
+  onDelete: function () {
+    if(confirm("Rezept wirklich loeschen?")) this.props.onDelete(this.props.cookbook.id, this.props.recipe.id); 
+    return false;
+  },
   render: function () {
     var recipe = this.props.recipe;
     var cookbook = this.props.cookbook;
     var isOwner = this.props.isOwner;
+
     var ingredients = recipe.ingredients.map(function (i,j) {
       return <li key={j}>{i.name}, {i.amount} {i.unit}</li>
     });
 
     var editLinks = isOwner ? (
       <div className="btn-toolbar">
-        <a onClick={Router.navigateToEditRecipe(cookbook.id,recipe.id)} href={Router.linkToEditRecipe(cookbook.id,recipe.id)} className="btn btn-warning">
+        <a onClick={Router.navigateToEditRecipe(cookbook.id,recipe.id)} 
+          href={Router.linkToEditRecipe(cookbook.id,recipe.id)} className="btn btn-warning">
           Bearbeiten
         </a>
-        <a href="" className="btn btn-danger">
+        <a href={Router.linkToCookbook(cookbook.id)} onClick={this.onDelete} className="btn btn-danger">
           L&ouml;schen
         </a>
       </div>

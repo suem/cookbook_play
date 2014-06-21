@@ -5,10 +5,12 @@
 'use strict';
 var React = require('react/addons');
 var Backbone = require('backbone')
+var Rx = require('rx')
 var $ = require('jquery');
 Backbone.$ = $;
 
 var Service = require('./Service.js');
+var RemoteService = require('./RemoteService.js');
 var Router = require('./Router.js')
 
 var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
@@ -20,98 +22,80 @@ var RecipeView = require('./components/RecipeView.js');
 var RecipeForm = require('./components/recipeForm/RecipeForm.js');
 
 // render global menubar
-var menubarContainer = document.getElementById('menubar');
-React.renderComponent(<MenuBar currentUser={Service.currentUser} onLogin={Service.login} onLogout={Service.logout}/>, menubarContainer);
+React.renderComponent(<MenuBar currentUser={Service.getCurrentUser()} onLogin={Service.login} onLogout={Service.logout}/>, document.getElementById('menubar'));
 
+var toCookbookListComponent = function (cookbooks) {
+  return <CookbookList key="cookbookList" cookbooks={cookbooks}/>;
+}
 
-var AppView = React.createClass({
-  getInitialState: function() {
-    return {component: <div />};
-  },
-  render: function () {
-    return this.state.component;
-  }
-});
+var toCookbookViewComponent = function (cookbook, recipes, currentUser) {
+  return (
+    <CookbookView key={cookbook.id} cookbook={cookbook} recipes={recipes} isOwner={Service.ownsCookbook(cookbook,currentUser)}/>);
+}
 
+var toRecipeViewComponent = function (cookbook, recipe, currentUser) {
+  return (
+    <RecipeView key={'recipe_'+recipe.id} cookbook={cookbook} recipe={recipe} 
+      isOwner={Service.ownsCookbook(cookbook,currentUser)} onDelete={Service.removeRecipe} />
+  );
+}
+
+var toRecipeFormComponent = function(cookbook, recipe, ingredientSuggestions, unitSuggestions) {
+  return ( <RecipeForm 
+    key={cookbook.id+'_edit_'+recipe.id} 
+    cookbook={cookbook} 
+    recipe={recipe} 
+    onSave={Service.storeRecipe} 
+    unitSuggestions={unitSuggestions}
+    ingredientSuggestions={ingredientSuggestions} />) 
+}
+
+var currentSubscription = new Rx.BehaviorSubject().subscribe(function(){}); 
 var mainContainer = document.getElementById('content');
-
-var currentSubscription = null;
 var renderSubject = function (componentSubject) {
-  if(currentSubscription) currentSubscription.dispose();
+  currentSubscription.dispose();
   currentSubscription = componentSubject.subscribe(function(component) {
     React.unmountComponentAtNode(mainContainer)
     React.renderComponent(component, mainContainer);
   });
 }
 
-
-
-
-
-
 var App = {
   renderCookbookList :  function () {
     console.log("cookbook list");
-    var componentSubject = Service.cookbooks.map(function(cookbooks){
-      return (<CookbookList key="cookbookList" cookbooks={cookbooks}/>);
-    });
+    var componentSubject = Service.getCookbooks().map(toCookbookListComponent);
     renderSubject(componentSubject)
   },
   renderCookbookView : function (cookbookId) {
     console.log("cookbook: "+cookbookId);
     var cookbook = Service.getCookbook(cookbookId);
-    var currentUser = Service.currentUser;
-    var componentSubject = cookbook.combineLatest(currentUser, function(cookbook, currentUser) {
-      var isOwner = Service.ownsCookbook(cookbook,currentUser)
-      return (
-        <CookbookView key={cookbookId} cookbook={cookbook} currentUser={Service.currentUser} isOwner={isOwner} />
-      );
-    });
-
+    var recipes = Service.getRecipes(cookbookId);
+    var currentUser = Service.getCurrentUser();
+    var componentSubject = cookbook.combineLatest(recipes, currentUser, toCookbookViewComponent);
     renderSubject(componentSubject)
   },
   renderRecipeView : function (cookbookId, recipeId) {
     console.log("recipe: "+cookbookId+", "+recipeId);
-
     var cookbook = Service.getCookbook(cookbookId);
-    var currentUser = Service.currentUser;
-
-    var componentSubject = cookbook.combineLatest(currentUser, function(cookbook, currentUser) {
-      var recipe = cookbook.recipes[recipeId]
-      var isOwner = Service.ownsCookbook(cookbook,currentUser)
-      return (
-        <RecipeView key={recipeId} cookbook={cookbook} recipe={recipe} isOwner={isOwner} />
-      );
-    });
-
+    var currentUser = Service.getCurrentUser();
+    var recipe = Service.getRecipe(cookbookId,recipeId);
+    var componentSubject = cookbook.combineLatest(recipe, currentUser, toRecipeViewComponent);
     renderSubject(componentSubject)
   },
-  renderNewRecipeView : function (cookbookId) {
-    console.log("new recipe: "+cookbookId);
-    var onSave = function (recipe) {
-      Service.storeRecipe(cookbookId,recipe);
+  renderRecipeForm : function (cookbookId, recipeId) {
+    var cookbook = Service.getCookbook(cookbookId);
+    var ingredientSuggestions = Service.getIngredientSuggestions();
+    var unitSuggestions = Service.getUnitSuggestions();
+    var recipe
+    if(recipeId) {
+      recipe = Service.getRecipe(cookbookId, recipeId).map(function (r) { return JSON.parse(JSON.stringify(r)) })
+    } else {
+      recipe = new Rx.BehaviorSubject({id: null, name:'', description:'', instructions:'', ingredients: []});
     }
-    var componentSubject = Service.getCookbook(cookbookId).map(function (cookbook) {
-      return ( <RecipeForm key={cookbookId+'_new'} cookbook={cookbook} recipe={{ingredients: []}} onSave={onSave} />) 
-    })
-    renderSubject(componentSubject)
-  },
-  renderEditRecipeView : function (cookbookId, recipeId) {
-    console.log("recipe: "+cookbookId+", "+recipeId);
-
-    var cookbook = Service.getCookbook(cookbookId);
-    var currentUser = Service.currentUser;
-
-    var componentSubject = cookbook.map(function(cookbook) {
-      //make copy of objet s.t. original isn't edited
-      var recipe = JSON.parse(JSON.stringify(cookbook.recipes[recipeId]));
-      var onSave = function (recipe) {
-        Service.storeRecipe(cookbook.id,recipe);
-      }
-      return ( <RecipeForm key={cookbookId+'_edit_'+recipeId} cookbook={cookbook} recipe={recipe} onSave={onSave} />) 
-    });
+    var componentSubject = cookbook.combineLatest(recipe, ingredientSuggestions,unitSuggestions,toRecipeFormComponent);
     renderSubject(componentSubject)
   }
+
 }
 
 Router.init(App)

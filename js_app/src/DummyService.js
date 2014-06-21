@@ -26,8 +26,12 @@ var currentUser = new Rx.BehaviorSubject();
 var cookbookList = new Rx.BehaviorSubject(_.values(users));
 
 var DummyService = {
-  currentUser: currentUser,
-  cookbooks: cookbookList,
+  getCurrentUser: function () {
+    return currentUser;
+  },
+  getCookbooks: function () {
+    return cookbookList;
+  },
   
   login: function (username,login,callback) {
     var user = users[username];
