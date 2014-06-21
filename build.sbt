@@ -1,4 +1,4 @@
-name := "cookbook_play"
+name := "cookbook"
 
 version := "1.0-SNAPSHOT"
 
