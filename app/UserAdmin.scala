@@ -12,7 +12,6 @@ object UserQueries {
 }
 
 object UserAdmin extends App {
-
-  println(UserQueries.updateUser("sam", "12345"))
+  println(UserQueries.updateUser("x", "xx"))
 }
 

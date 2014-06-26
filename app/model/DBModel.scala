@@ -41,7 +41,7 @@ object DBModel {
     def id = column[Long]("ID", O.PrimaryKey, O.AutoInc)
     def name = column[String]("NAME", O.NotNull)
     def description = column[String]("DESCRIPTION")
-    def instructions = column[String]("INSTRUCTIONS")
+    def instructions = column[String]("INSTRUCTIONS", O.DBType("text"))
     def userId = column[Long]("USER_ID")
     def user = foreignKey("USER_FK", userId, userRows)(_.id)
     def * = (id.?, name, description, instructions, userId) <> (RecipeRow.tupled, RecipeRow.unapply _)
