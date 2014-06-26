@@ -1,6 +1,5 @@
 package model
 
-import java.security.MessageDigest
 
 import play.api.db.slick.Config.driver.simple._
 import scala.slick.lifted.Tag
@@ -10,9 +9,6 @@ object DBModel {
   //case classes for row mapping
 
   case class UserRow(id: Option[Long], loginname: String, password: String, displayname: String)
-
-  //TODO should add salt to password
-  def toPassword(str:String) : String = new String(MessageDigest.getInstance("SHA-256").digest(str.getBytes))
 
   case class RecipeRow(
     id: Option[Long],

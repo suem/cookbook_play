@@ -1,10 +1,10 @@
 package model
 
+import util.StringUtil.StringCrypto
 import play.api.db.slick.Config.driver.simple._
 import play.api.libs.json._
 import play.api.libs.functional.syntax._
 import scala.slick.jdbc.{GetResult, StaticQuery => Q}
-
 
 object Service {
 
@@ -106,7 +106,7 @@ object Service {
     }
 
   def user(loginname: String, password: String)(implicit s: Session): Option[User] =
-    DBModel.userRows.filter({ row => row.loginname === loginname && row.password === DBModel.toPassword(password)}).firstOption.map {
+    DBModel.userRows.filter({ row => row.loginname === loginname && row.password === password.toPasswordHash}).firstOption.map {
       row => User(row.id, row.loginname, row.displayname)
     }
 
